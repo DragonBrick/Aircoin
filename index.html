@@ -1,0 +1,168 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>AirCoin - Demo</title>
+    <style>
+        body {
+            font-family: system-ui, Arial;
+            padding: 20px;
+            max-width: 900px;
+            margin: auto;
+        }
+
+        input,
+        button {
+            padding: 8px;
+            margin: 4px;
+        }
+
+        .box {
+            border: 1px solid #ccc;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+        }
+
+        .tx {
+            font-size: 0.9em;
+            border-bottom: 1px dashed #eee;
+            padding: 6px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>AirCoin (demo)</h1>
+    <div id="auth">
+        <div class="box">
+            <h3>Signup</h3>
+            <input id="s_name" placeholder="Name"><br>
+            <input id="s_userid" placeholder="UserID"><br>
+            <input id="s_password" placeholder="Password" type="password"><br>
+            <input id="s_pin" placeholder="Admin PIN (optional)"><br>
+            <button id="btnSignup">Signup</button>
+        </div>
+
+        <div class="box">
+            <h3>Login</h3>
+            <input id="l_userid" placeholder="UserID"><br>
+            <input id="l_password" placeholder="Password" type="password"><br>
+            <button id="btnLogin">Login</button>
+        </div>
+    </div>
+
+    <div id="app" style="display:none;">
+        <button id="btnLogout">Logout</button>
+        <div class="box">
+            <h3>Your info</h3>
+            <div id="meInfo"></div>
+        </div>
+
+        <div class="box">
+            <h3>Send AirCoin</h3>
+            <input id="toUser" placeholder="Recipient UserID"><br>
+            <input id="amount" placeholder="Amount" type="number" step="0.0001"><br>
+            <button id="btnSend">Send</button>
+        </div>
+
+        <div class="box">
+            <h3>Recent Transactions</h3>
+            <div id="txList"></div>
+        </div>
+
+        <div class="box">
+            <h3>All Users (demo)</h3>
+            <div id="userList"></div>
+        </div>
+    </div>
+
+    <script>
+        const api = (path, opts = {}) => {
+            const token = localStorage.getItem('token');
+            opts.headers = opts.headers || {};
+            if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+            return fetch(path, opts).then(r => r.json());
+        };
+
+        async function refreshMe() {
+            const data = await api('/api/me');
+            if (data.error) { console.log(data); logout(); return; }
+            document.getElementById('meInfo').innerHTML = `
+        <b>${data.name} (${data.userid})</b><br>
+        Admin: ${data.isAdmin}<br>
+        Balance: ${data.balance}<br>
+      `;
+            const txList = document.getElementById('txList');
+            txList.innerHTML = data.txs.map(t => `<div class="tx">${t.createdAt} — ${t.fromUserId} → ${t.toUserId} : ${t.amount}</div>`).join('');
+        }
+
+        async function loadUsers() {
+            const users = await api('/api/users');
+            if (users.error) return;
+            document.getElementById('userList').innerHTML = users.map(u =>
+                `<div>${u.userid} — ${u.name} — ${u.isAdmin ? 'Admin' : 'User'} — ${u.balance}</div>`
+            ).join('');
+        }
+
+        function showApp(show) {
+            document.getElementById('auth').style.display = show ? 'none' : 'block';
+            document.getElementById('app').style.display = show ? 'block' : 'none';
+        }
+
+        async function logout() {
+            localStorage.removeItem('token');
+            showApp(false);
+        }
+
+        document.getElementById('btnSignup').onclick = async () => {
+            const body = {
+                name: document.getElementById('s_name').value,
+                userid: document.getElementById('s_userid').value,
+                password: document.getElementById('s_password').value,
+                pin: document.getElementById('s_pin').value
+            };
+            const res = await api('/api/signup', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+            if (!res.ok) return alert(res.error || 'Error');
+            localStorage.setItem('token', res.token);
+            showApp(true);
+            await refreshMe();
+            await loadUsers();
+        };
+
+        document.getElementById('btnLogin').onclick = async () => {
+            const body = {
+                userid: document.getElementById('l_userid').value,
+                password: document.getElementById('l_password').value
+            };
+            const res = await api('/api/login', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+            if (!res.ok) return alert(res.error || 'Invalid login');
+            localStorage.setItem('token', res.token);
+            showApp(true);
+            await refreshMe();
+            await loadUsers();
+        };
+
+        document.getElementById('btnLogout').onclick = logout;
+
+        document.getElementById('btnSend').onclick = async () => {
+            const to = document.getElementById('toUser').value;
+            const amount = Number(document.getElementById('amount').value);
+            const res = await api('/api/send', { method: 'POST', body: JSON.stringify({ toUserId: to, amount }), headers: { 'Content-Type': 'application/json' } });
+            if (!res.ok) return alert(res.error || 'Error');
+            alert('Sent!');
+            await refreshMe();
+            await loadUsers();
+        };
+
+        // try auto-login if token exists
+        if (localStorage.getItem('token')) {
+            showApp(true);
+            refreshMe();
+            loadUsers();
+        }
+    </script>
+</body>
+
+</html>
