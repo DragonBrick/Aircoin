@@ -68,7 +68,7 @@ app.post('/api/signup', async (req, res) => {
         userid,
         passwordHash,
         isAdmin,
-        balance: isAdmin ? 0 : 100 // regular users start with 100; admin has flag for infinite
+        balance: 0 // everyone starts with 0
     });
 
     await user.save();
@@ -94,9 +94,7 @@ app.post('/api/login', async (req, res) => {
 // Get balance & recent tx
 app.get('/api/me', authMiddleware, async (req, res) => {
     const user = req.user;
-    // For admin: show infinity
     const balance = user.isAdmin ? 'Infinity' : user.balance;
-    // Recent txs involving user
     const txs = await Transaction.find({
         $or: [{ fromUserId: user.userid }, { toUserId: user.userid }]
     }).sort({ createdAt: -1 }).limit(50).lean();
@@ -109,17 +107,17 @@ app.post('/api/send', authMiddleware, async (req, res) => {
     const sender = await User.findOne({ userid: req.user.userid });
     if (!toUserId || !amount || amount <= 0) return res.status(400).json({ error: 'Invalid to/amount' });
 
+    if (toUserId === sender.userid) return res.status(400).json({ error: 'Cannot send to self' });
+
     const receiver = await User.findOne({ userid: toUserId });
     if (!receiver) return res.status(400).json({ error: 'Receiver not found' });
 
-    // Admin has infinite funds: do not decrement admin balance
     if (!sender.isAdmin) {
         if (sender.balance < amount) return res.status(400).json({ error: 'Insufficient funds' });
         sender.balance = Number((sender.balance - amount).toFixed(8));
         await sender.save();
     }
 
-    // Credit receiver
     receiver.balance = Number((receiver.balance + amount).toFixed(8));
     await receiver.save();
 
@@ -129,7 +127,7 @@ app.post('/api/send', authMiddleware, async (req, res) => {
     res.json({ ok: true, tx });
 });
 
-// Simple user list (for demo, not paginated)
+// Simple user list (for demo)
 app.get('/api/users', authMiddleware, async (req, res) => {
     const users = await User.find({}, { passwordHash: 0 }).lean();
     res.json(users);
